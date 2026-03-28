@@ -1,0 +1,52 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono&display=swap');
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --color-gold: #D4AF37;
+  --color-premium-black: #0A0A0A;
+  --color-premium-gray: #1A1A1A;
+}
+
+@layer base {
+  :root {
+    --bg-app: #FFFFFF;
+    --bg-sidebar: #F8F8F8;
+    --text-primary: #1A1A1A;
+    --text-secondary: #4B5563;
+    --border-color: rgba(0, 0, 0, 0.05);
+    --card-bg: rgba(0, 0, 0, 0.02);
+  }
+
+  .dark {
+    --bg-app: #0A0A0A;
+    --bg-sidebar: #1A1A1A;
+    --text-primary: #FFFFFF;
+    --text-secondary: #9CA3AF;
+    --border-color: rgba(255, 255, 255, 0.05);
+    --card-bg: rgba(255, 255, 255, 0.05);
+  }
+
+  body {
+    @apply bg-[var(--bg-app)] text-[var(--text-primary)] font-sans antialiased transition-colors duration-300;
+  }
+}
+
+.glass-card {
+  @apply bg-[var(--card-bg)] backdrop-blur-lg border border-[var(--border-color)] rounded-2xl;
+}
+
+.premium-gradient {
+  background: linear-gradient(135deg, var(--bg-sidebar) 0%, var(--bg-app) 100%);
+}
+
+.markdown-body h1 { @apply text-2xl font-serif font-bold mb-4 mt-6 text-[var(--text-primary)]; }
+.markdown-body h2 { @apply text-xl font-serif font-semibold mb-3 mt-5 text-[var(--text-primary)]; }
+.markdown-body p { @apply mb-4 leading-relaxed text-[var(--text-secondary)]; }
+.markdown-body ul { @apply list-disc pl-6 mb-4 space-y-2 text-[var(--text-secondary)]; }
+.markdown-body ol { @apply list-decimal pl-6 mb-4 space-y-2 text-[var(--text-secondary)]; }
+.markdown-body strong { @apply text-[var(--text-primary)] font-semibold; }
+.markdown-body blockquote { @apply border-l-4 border-gold/50 pl-4 italic my-4 text-[var(--text-secondary)]; }
