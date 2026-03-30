@@ -29,6 +29,45 @@ import {
 import { cn } from './lib/utils';
 import { SYSTEM_PROMPT } from './constants';
 
+// Error Boundary Component
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-premium-black flex items-center justify-center p-6 text-center">
+          <div className="glass-card p-8 max-w-md w-full border-red-500/20">
+            <h1 className="text-2xl font-serif font-bold text-white mb-4">Something went wrong</h1>
+            <p className="text-gray-400 text-sm mb-6">
+              {this.state.error?.message || "An unexpected error occurred."}
+            </p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-6 py-2 bg-gold text-black rounded-xl font-bold hover:bg-gold/90 transition-all"
+            >
+              Reload Application
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 // Types
 interface Message {
   id: string;
@@ -36,6 +75,13 @@ interface Message {
   content: string;
   type?: 'text' | 'image-prompt' | 'image-result';
   imageUrl?: string;
+}
+
+interface ChatSession {
+  id: string;
+  title: string;
+  messages: Message[];
+  updatedAt: number;
 }
 
 const QUICK_ACTIONS = [
@@ -48,21 +94,91 @@ const QUICK_ACTIONS = [
 ];
 
 export default function App() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content: "Welcome to **Profit Coach**. I'm here to help you turn your ideas into income. Whether you're starting from scratch or scaling your personal brand, let's get to work.\n\nWhat are we building today?",
-    }
-  ]);
+  return (
+    <ErrorBoundary>
+      <ProfitCoachApp />
+    </ErrorBoundary>
+  );
+}
+
+function ProfitCoachApp() {
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Initialize Gemini
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  // Load sessions from localStorage on mount
+  useEffect(() => {
+    const savedSessions = localStorage.getItem('profit_coach_sessions');
+    if (savedSessions) {
+      try {
+        const parsed = JSON.parse(savedSessions);
+        setSessions(parsed);
+        if (parsed.length > 0) {
+          setCurrentSessionId(parsed[0].id);
+        } else {
+          createNewSession();
+        }
+      } catch (e) {
+        console.error("Failed to parse sessions", e);
+        createNewSession();
+      }
+    } else {
+      createNewSession();
+    }
+  }, []);
+
+  // Save sessions to localStorage whenever they change
+  useEffect(() => {
+    if (sessions.length > 0) {
+      localStorage.setItem('profit_coach_sessions', JSON.stringify(sessions));
+    }
+  }, [sessions]);
+
+  const currentSession = sessions.find(s => s.id === currentSessionId) || null;
+  const messages = currentSession?.messages || [];
+
+  const createNewSession = () => {
+    const newSession: ChatSession = {
+      id: Date.now().toString(),
+      title: 'New Coaching Session',
+      messages: [
+        {
+          id: 'welcome',
+          role: 'assistant',
+          content: "Welcome to **Profit Coach**. I'm here to help you turn your ideas into income. Whether you're starting from scratch or scaling your personal brand, let's get to work.\n\nWhat are we building today?",
+        }
+      ],
+      updatedAt: Date.now(),
+    };
+    setSessions(prev => [newSession, ...prev]);
+    setCurrentSessionId(newSession.id);
+  };
+
+  const deleteSession = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newSessions = sessions.filter(s => s.id !== id);
+    setSessions(newSessions);
+    if (currentSessionId === id) {
+      if (newSessions.length > 0) {
+        setCurrentSessionId(newSessions[0].id);
+      } else {
+        createNewSession();
+      }
+    }
+  };
+
+  // Lazy initialize Gemini to prevent crash if key is missing
+  const getAI = () => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is missing. Please add it to your Secrets in AI Studio.");
+    }
+    return new GoogleGenAI({ apiKey });
+  };
 
   useEffect(() => {
     // Apply theme to document
@@ -88,11 +204,25 @@ export default function App() {
       content: text,
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    // Update session title if it's the first user message
+    let updatedTitle = currentSession?.title || 'New Coaching Session';
+    if (messages.filter(m => m.role === 'user').length === 0) {
+      updatedTitle = text.length > 30 ? text.substring(0, 30) + '...' : text;
+    }
+
+    const updatedMessages = [...messages, userMessage];
+    
+    setSessions(prev => prev.map(s => 
+      s.id === currentSessionId 
+        ? { ...s, messages: updatedMessages, title: updatedTitle, updatedAt: Date.now() } 
+        : s
+    ));
+
     setInput('');
     setIsLoading(true);
 
     try {
+      const ai = getAI();
       const chat = ai.chats.create({
         model: "gemini-3-flash-preview",
         config: {
@@ -111,26 +241,38 @@ export default function App() {
         content: response.text || "I'm sorry, I couldn't process that request.",
       };
 
-      setMessages(prev => [...prev, assistantMessage]);
+      setSessions(prev => prev.map(s => 
+        s.id === currentSessionId 
+          ? { ...s, messages: [...updatedMessages, assistantMessage], updatedAt: Date.now() } 
+          : s
+      ));
 
       // Check if user asked for an image generation
       if (text.toLowerCase().includes('generate image') || text.toLowerCase().includes('image of')) {
-        await handleImageGeneration(text);
+        await handleImageGeneration(text, ai);
       }
 
     } catch (error) {
       console.error("Error calling Gemini:", error);
-      setMessages(prev => [...prev, {
-        id: 'error',
-        role: 'assistant',
-        content: "I encountered an error. Please try again or check your connection."
-      }]);
+      setSessions(prev => prev.map(s => 
+        s.id === currentSessionId 
+          ? { 
+              ...s, 
+              messages: [...updatedMessages, {
+                id: 'error',
+                role: 'assistant',
+                content: error instanceof Error ? `Error: ${error.message}` : "I encountered an error. Please try again or check your connection."
+              }], 
+              updatedAt: Date.now() 
+            } 
+          : s
+      ));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleImageGeneration = async (prompt: string) => {
+  const handleImageGeneration = async (prompt: string, ai: any) => {
     try {
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
@@ -147,13 +289,21 @@ export default function App() {
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
           const imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-          setMessages(prev => [...prev, {
-            id: Date.now().toString(),
-            role: 'assistant',
-            content: "Here is your generated visual:",
-            type: 'image-result',
-            imageUrl
-          }]);
+          setSessions(prev => prev.map(s => 
+            s.id === currentSessionId 
+              ? { 
+                  ...s, 
+                  messages: [...s.messages, {
+                    id: Date.now().toString(),
+                    role: 'assistant',
+                    content: "Here is your generated visual:",
+                    type: 'image-result',
+                    imageUrl
+                  }], 
+                  updatedAt: Date.now() 
+                } 
+              : s
+          ));
         }
       }
     } catch (error) {
@@ -202,6 +352,46 @@ export default function App() {
 
         <div className="flex-1 overflow-y-auto px-4 py-2 space-y-6">
           <div>
+            <button 
+              onClick={createNewSession}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gold text-black font-bold transition-all hover:bg-gold/90 mb-6"
+            >
+              <Plus className="w-4 h-4" />
+              New Coaching
+            </button>
+
+            <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest mb-4 px-2">History</h3>
+            <div className="space-y-1 max-h-[300px] overflow-y-auto custom-scrollbar">
+              {sessions.map((session) => (
+                <div
+                  key={session.id}
+                  onClick={() => {
+                    setCurrentSessionId(session.id);
+                    if (window.innerWidth < 1024) setIsSidebarOpen(false);
+                  }}
+                  className={cn(
+                    "group w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-colors cursor-pointer text-sm",
+                    currentSessionId === session.id 
+                      ? "bg-gold/10 text-gold border border-gold/20" 
+                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-color)]"
+                  )}
+                >
+                  <div className="flex items-center gap-3 truncate">
+                    <Bot className={cn("w-4 h-4 flex-shrink-0", currentSessionId === session.id ? "text-gold" : "text-gray-500")} />
+                    <span className="truncate">{session.title}</span>
+                  </div>
+                  <button 
+                    onClick={(e) => deleteSession(session.id, e)}
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 transition-all"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-[var(--border-color)]">
             <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-widest mb-4 px-2">Quick Actions</h3>
             <div className="space-y-1">
               {QUICK_ACTIONS.map((action) => (
@@ -218,20 +408,6 @@ export default function App() {
                 </button>
               ))}
             </div>
-          </div>
-
-          <div className="pt-6 border-t border-[var(--border-color)]">
-            <button 
-              onClick={() => setMessages([{
-                id: 'welcome',
-                role: 'assistant',
-                content: "Welcome to **Profit Coach**. I'm here to help you turn your ideas into income. What are we building today?",
-              }])}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[var(--border-color)] hover:bg-[var(--border-color)] text-[var(--text-primary)] font-medium transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              New Session
-            </button>
           </div>
         </div>
 

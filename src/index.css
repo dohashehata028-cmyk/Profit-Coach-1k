@@ -50,3 +50,19 @@
 .markdown-body ol { @apply list-decimal pl-6 mb-4 space-y-2 text-[var(--text-secondary)]; }
 .markdown-body strong { @apply text-[var(--text-primary)] font-semibold; }
 .markdown-body blockquote { @apply border-l-4 border-gold/50 pl-4 italic my-4 text-[var(--text-secondary)]; }
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-gold/20 rounded-full;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-gold/40;
+}
