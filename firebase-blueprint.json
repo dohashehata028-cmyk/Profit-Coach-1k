@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user profile information synced from Firebase Auth.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique user ID." },
+        "email": { "type": "string", "format": "email", "description": "The user's email address." },
+        "displayName": { "type": "string", "description": "The user's display name." },
+        "photoURL": { "type": "string", "format": "uri", "description": "The user's profile photo URL." },
+        "lastLogin": { "type": "string", "format": "date-time", "description": "The last time the user logged in." }
+      },
+      "required": ["uid", "email"]
+    },
+    "ChatSession": {
+      "title": "Chat Session",
+      "description": "Represents a distinct coaching conversation.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The title of the session." },
+        "uid": { "type": "string", "description": "The ID of the user who owns this session." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "The last time the session was updated." }
+      },
+      "required": ["title", "uid", "updatedAt"]
+    },
+    "Message": {
+      "title": "Chat Message",
+      "description": "An individual message within a chat session.",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["user", "assistant"], "description": "The role of the message sender." },
+        "content": { "type": "string", "description": "The text content of the message." },
+        "type": { "type": "string", "enum": ["text", "image-prompt", "image-result"], "description": "The type of message content." },
+        "imageUrl": { "type": "string", "format": "uri", "description": "Optional URL for a generated image." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "The time the message was created." }
+      },
+      "required": ["role", "content", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": "User", "description": "User profiles." },
+    "/sessions/{sessionId}": { "schema": "ChatSession", "description": "Chat sessions." },
+    "/sessions/{sessionId}/messages/{messageId}": { "schema": "Message", "description": "Messages within a session." }
+  }
+}

@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: users
+    // - uid: string (required)
+    // - email: string (required)
+    // - displayName: string
+    // - photoURL: string
+    // - lastLogin: timestamp
+    //
+    // Collection: sessions
+    // - title: string (required)
+    // - uid: string (required)
+    // - updatedAt: timestamp (required)
+    //
+    // Collection: sessions/{sessionId}/messages
+    // - role: string (user/assistant) (required)
+    // - content: string (required)
+    // - type: string (optional)
+    // - imageUrl: string (optional)
+    // - createdAt: timestamp (required)
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "dohay235@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && (request.auth.uid == resource.data.uid || isAdmin());
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*") || url.matches("^data:image/.*"));
+    }
+
+    // Domain Validators
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.email is string && isValidEmail(data.email);
+    }
+
+    function isValidSession(data) {
+      return data.keys().hasAll(['title', 'uid', 'updatedAt']) &&
+             data.title is string && data.title.size() <= 100 &&
+             data.uid is string &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['role', 'content', 'createdAt']) &&
+             data.role in ['user', 'assistant'] &&
+             data.content is string && data.content.size() <= 20000 &&
+             data.createdAt is timestamp &&
+             (!('imageUrl' in data) || isValidUrl(data.imageUrl));
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+    }
+
+    match /sessions/{sessionId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.uid && isValidSession(request.resource.data);
+      allow update: if isDocOwner() && request.auth.uid == request.resource.data.uid && isValidSession(request.resource.data);
+      allow delete: if isDocOwner();
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/sessions/$(sessionId)).data.uid;
+        allow create: if isAuthenticated() && request.auth.uid == get(/databases/$(database)/documents/sessions/$(sessionId)).data.uid && isValidMessage(request.resource.data);
+      }
+    }
+  }
+}
